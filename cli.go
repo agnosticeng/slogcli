@@ -1,6 +1,7 @@
 package slogcli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +10,8 @@ import (
 	"github.com/urfave/cli/v2"
 	slogctx "github.com/veqryn/slog-context"
 )
+
+type fileContextKey struct{}
 
 func SlogFlags() []cli.Flag {
 	return []cli.Flag{
@@ -34,7 +37,6 @@ func SlogBefore(ctx *cli.Context) error {
 		path   = ctx.String("log-path")
 		format = ctx.String("log-format")
 		w      io.WriteCloser
-		err    error
 		lvl    slog.LevelVar
 	)
 
@@ -43,11 +45,14 @@ func SlogBefore(ctx *cli.Context) error {
 	if len(path) == 0 {
 		w = os.Stderr
 	} else {
-		w, err = os.Create(path)
-	}
+		f, err := os.Create(path)
 
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+
+		ctx.Context = context.WithValue(ctx.Context, fileContextKey{}, f)
+		w = f
 	}
 
 	var handler slog.Handler
@@ -68,5 +73,15 @@ func SlogBefore(ctx *cli.Context) error {
 
 	slog.SetDefault(logger)
 	ctx.Context = slogctx.NewCtx(ctx.Context, logger)
+	return nil
+}
+
+func SlogAfter(ctx *cli.Context) error {
+	f, found := ctx.Context.Value(fileContextKey{}).(*os.File)
+
+	if found {
+		return f.Close()
+	}
+
 	return nil
 }
